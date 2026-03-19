@@ -140,12 +140,16 @@ export const DataHubService = {
   },
 
   getArcs: async (e: IpcMainInvokeEvent, [host, token, page, page_limit, search, show_public]: [string, string]) => {
-    return await InternetService.getWebPageAsJson(null, {
+    const options: any = {
       host: host,
-      path: `/api/v4/projects?simple=true&page=${page}&per_page=${page_limit}${!show_public ? '&membership=true' : ''}${search ? `&search=${encodeURI(search)}` : ''}${token ? `&access_token=${token}` : ''}`,
+      path: `/api/v4/projects?simple=true&page=${page}&per_page=${page_limit}${!show_public ? '&membership=true' : ''}${search ? `&search=${encodeURI(search)}` : ''}`,
       method: 'GET',
       with_header: true,
-    });
+    };
+    if (token) {
+      options.header = { Authorization: `Bearer ${token}` };
+    }
+    return await InternetService.getWebPageAsJson(null, options);
   },
 
   inspectArc: async (e: IpcMainInvokeEvent, url: string) => {
@@ -223,22 +227,23 @@ export const DataHubService = {
     return await InternetService.getWebPageAsJson(null, {
       host: host,
       path: `/api/v4/groups/?${querystring.stringify({
-        access_token: token,
         all_available: false,
         per_page: 100,
         page: page,
       })}`,
       port: 443,
       method: 'GET',
+      header: { Authorization: `Bearer ${token}` },
     });
   },
 
   getUser: async (e: IpcMainInvokeEvent | null, token: string, host: string): Promise<User> => {
     return await InternetService.getWebPageAsJson(null, {
       host: host,
-      path: `/api/v4/user/?access_token=${token}`,
+      path: `/api/v4/user/`,
       port: 443,
       method: 'GET',
+      header: { Authorization: `Bearer ${token}` },
     });
   },
 
@@ -247,9 +252,10 @@ export const DataHubService = {
   getProjectMembers: async (e: IpcMainInvokeEvent, [host, token, projectId]: [string, string, string | number]) => {
     const result = await InternetService.getWebPageAsJson(null, {
       host: host,
-      path: `/api/v4/projects/${encodeURIComponent(projectId)}/members/all?access_token=${token}`,
+      path: `/api/v4/projects/${encodeURIComponent(projectId)}/members/all`,
       port: 443,
       method: 'GET',
+      header: { Authorization: `Bearer ${token}` },
     });
     return result;
   },
