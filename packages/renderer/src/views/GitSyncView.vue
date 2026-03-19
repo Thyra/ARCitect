@@ -371,7 +371,31 @@ const ACCESS_LEVEL_NAMES: Record<number, string> = {
   50: 'Owner'
 };
 
-// Parse project ID from GitLab remote URL
+// Extract GitLab host from various git remote URL formats and return https://host
+const getGitLabWebUrlFromRemote = (remoteUrl: string): string | null => {
+  try {
+    const cleanUrl = remoteUrl.replace(GitService.get_url_credentials(remoteUrl), '');
+
+    let host = '';
+
+    if (cleanUrl.includes('://')) {
+      // URL format with explicit scheme (e.g., ssh://, https://, git://)
+      const urlObj = new URL(cleanUrl);
+      host = urlObj.hostname;
+    } else if (cleanUrl.includes('@') && cleanUrl.includes(':')) {
+      // SCP-style SSH format: git@host:path/to/project.git
+      const parts = cleanUrl.split(':', 2);
+      const hostPart = parts[0];
+      host = hostPart.split('@')[1];
+    }
+
+    return host ? `https://${host}` : null;
+  } catch (error) {
+    console.error('Error extracting GitLab host from remote URL:', error);
+    return null;
+  }
+};
+
 const parseProjectIdFromUrl = (url: string): string | null => {
   try {
     // Remove credentials from URL
@@ -383,17 +407,21 @@ const parseProjectIdFromUrl = (url: string): string | null => {
     // https://host/group/subgroup/project.git
 
     let projectPath = '';
-
-    if (cleanUrl.includes('@')) {
-      // SSH format: git@host:path/to/project.git
-      const parts = cleanUrl.split(':');
-      if (parts.length >= 2) {
-        projectPath = parts[1];
+    if (cleanUrl.includes('://')) {
+      // URL format with explicit scheme (e.g., ssh://, https://, git://)
+      const urlObj = new URL(cleanUrl);
+      // Remove leading slashes from pathname
+      projectPath = urlObj.pathname.replace(/^\/+/, '');
+    } else if (cleanUrl.includes('@') && cleanUrl.includes(':')) {
+      // SCP-style SSH format: git@host:path/to/project.git
+      const parts = cleanUrl.split(':', 2);
+      if (parts.length === 2) {
+        projectPath = parts[1].replace(/^\/+/, '');
       }
     } else {
-      // HTTPS format: https://host/path/to/project.git
+      // Host/path format, optionally with http(s) scheme
       const urlObj = new URL(cleanUrl.startsWith('http') ? cleanUrl : 'https://' + cleanUrl);
-      projectPath = urlObj.pathname.substring(1); // Remove leading /
+      projectPath = urlObj.pathname.replace(/^\/+/, '');
     }
 
     // Remove .git extension
@@ -409,7 +437,13 @@ const parseProjectIdFromUrl = (url: string): string | null => {
 // Load collaborators for the current remote
 const loadCollaborators = async () => {
   if (!iProps.remote || !AppProperties.user) {
-    console.log('loadCollaborators: Missing required data');
+    return;
+  }
+
+  // Guard against missing remote entry
+  if (!GitService._.remotes[iProps.remote]) {
+    iProps.collaborators = [];
+    iProps.collaboratorsError = 'Remote no longer exists';
     return;
   }
 
@@ -420,10 +454,8 @@ const loadCollaborators = async () => {
   const token = AppProperties.user.token.access_token;
   const projectId = parseProjectIdFromUrl(remoteUrl);
 
-  console.log('loadCollaborators: Loading for project', projectId);
 
   if (!projectId) {
-    console.log('loadCollaborators: Could not parse project ID');
     iProps.collaboratorsError = 'Could not determine project from remote URL';
     iProps.loadingCollaborators = false;
     return;
@@ -431,7 +463,6 @@ const loadCollaborators = async () => {
 
   try {
     const members = await window.ipc.invoke('DataHubService.getProjectMembers', [host, token, projectId]);
-    console.log('loadCollaborators: Result:', members);
 
     if (members && Array.isArray(members)) {
       iProps.collaborators = members;
@@ -443,7 +474,7 @@ const loadCollaborators = async () => {
   } catch (error) {
     console.error('loadCollaborators: Error loading collaborators', error);
     iProps.collaborators = [];
-    iProps.collaboratorsError = error;
+    iProps.collaboratorsError = error instanceof Error ? error.message : String(error);
   }
 
   iProps.loadingCollaborators = false;
@@ -453,6 +484,12 @@ const loadCollaborators = async () => {
 const openProjectMembersPage = () => {
   if (!iProps.remote) return;
 
+  // Guard against missing remote entry
+  if (!GitService._.remotes[iProps.remote]) {
+    showError('Remote no longer exists');
+    return;
+  }
+
   const remoteUrl = GitService._.remotes[iProps.remote].url;
   const projectId = parseProjectIdFromUrl(remoteUrl);
 
@@ -461,25 +498,13 @@ const openProjectMembersPage = () => {
     return;
   }
 
-  // Remove credentials from URL
-  const cleanUrl = remoteUrl.replace(GitService.get_url_credentials(remoteUrl), '');
-
-  // Build the GitLab URL
-  let baseUrl = '';
-  if (cleanUrl.includes('@')) {
-    // SSH format: git@host:path/to/project.git -> https://host/path/to/project
-    const parts = cleanUrl.split(':');
-    const host = parts[0].split('@')[1];
-    baseUrl = `https://${host}/${projectId}`;
-  } else {
-    // HTTPS format: https://host/path/to/project.git
-    baseUrl = cleanUrl.replace(/\.git$/, '');
-    if (!baseUrl.startsWith('http')) {
-      baseUrl = 'https://' + baseUrl;
-    }
+  const baseUrl = getGitLabWebUrlFromRemote(remoteUrl);
+  if (!baseUrl) {
+    showError('Could not parse GitLab host from remote URL');
+    return;
   }
 
-  const membersUrl = `${baseUrl}/-/project_members`;
+  const membersUrl = `${baseUrl}/${projectId}/-/project_members`;
   window.ipc.invoke('InternetService.openExternalURL', membersUrl);
 };
 
@@ -521,7 +546,9 @@ const removeRemote = async remote=>{
     args: [`remote`,`remove`,remote],
     cwd: ArcControlService.props.arc_root
   });
-  GitService.get_remotes();
+  await GitService.get_remotes();
+  // Reset to first available remote or clear if none exist
+  iProps.remote = Object.keys(GitService._.remotes)[0] || null;
 };
 
 const inspectArc = url =>{
