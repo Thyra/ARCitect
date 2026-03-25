@@ -511,8 +511,8 @@ const openProjectMembersPage = () => {
 const init = async()=>{
   await GitService.parse_status();
   await GitService.get_remotes();
-  await GitService.check_remotes();
   iProps.remote = Object.keys(GitService._.remotes)[0];
+  await GitService.check_remotes();
 };
 
 onMounted( init );
@@ -672,7 +672,7 @@ const inspectArc = url =>{
                   </div>
                   <div style="display:flex; gap:0.5em;">
                     <a_btn
-                      label="Manage in GitLab"
+                      label="Manage on DataHUB"
                       icon="open_in_new"
                       size="sm"
                       color="primary"
