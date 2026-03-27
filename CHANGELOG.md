@@ -22,7 +22,7 @@ where applicable. Add your name in the style of `(by @github-username)` at the e
 
 ### 🔄 Changed
 
-- Suggest parent dir instead of current ARC when clicking New ARC while having one open in order to prevent accidentally creating nested ARCs (see #525, by @Thyra)
+- Suggest parent dir instead of current ARC when clicking New ARC or Download ARC while having one open in order to prevent accidentally creating nested ARCs (see #525, by @Thyra)
 
 ## 1.6.1 - 2026-03-04
 

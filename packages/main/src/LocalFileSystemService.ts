@@ -92,7 +92,7 @@ export const LocalFileSystemService = {
       title: title,
       message: message,
       properties: ['openDirectory'],
-      defaultPath: LocalFileSystemService.arc_root,
+      defaultPath: LocalFileSystemService.arc_root ? PATH.dirname(LocalFileSystemService.arc_root) : undefined,
     });
     const path = result.filePaths[0];
     return path ? path_to_arcitect(path) : null;
